@@ -19,3 +19,8 @@ __pycache__/
 .vscode/
 .DS_Store
 *.log
+
+# Ignore files
+*_faulty.py
+*backup*.py
+*.pdf

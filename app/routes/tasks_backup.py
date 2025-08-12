@@ -145,7 +145,7 @@ def complete_task(
 
 
 # 5) Update an existing task (owner-only)
-@router.patch("/{task_id}", response_model=schemas.TaskOut)
+@router.patch("/{task_id}", response_model=schemas.TaskOut, summary="Update a task (owner-only)")
 def update_task(
     task_id: int,
     payload: schemas.TaskUpdate,
@@ -160,14 +160,14 @@ def update_task(
 
     data = payload.model_dump(exclude_unset=True)  # Pydantic v2
     if "status" in data and data["status"] is not None:
-        data["status"] = models.TaskStatus(data["status"])  # <<< cast
+        data["status"] = models.TaskStatus(data["status"])  # cast
 
     for field, value in data.items():
         setattr(task, field, value)
 
     db.commit()
     db.refresh(task)
-    return task
+    return task'''
 
 
 # 6) Delete a task (owner-only)

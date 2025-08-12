@@ -175,9 +175,12 @@ def update_task(
     if task.user_id != user_id:
         raise HTTPException(status_code=403, detail="You are not the owner of this task")
 
-    data = payload.model_dump(exclude_unset=True)  # Pydantic v2
+    data = payload.model_dump(exclude_unset=True)
     if "status" in data and data["status"] is not None:
-        data["status"] = models.TaskStatus(data["status"])  # cast
+        try:
+            data["status"] = models.TaskStatus(data["status"])
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid status")
 
     for field, value in data.items():
         setattr(task, field, value)
