@@ -22,5 +22,5 @@ __pycache__/
 
 # Ignore files
 *_faulty.py
-*backup*.py
+*_backup*.py
 *.pdf

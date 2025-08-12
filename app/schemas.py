@@ -35,3 +35,24 @@ class PaginatedTasks(BaseModel):
     total: int            # total number of tasks in DB
     page: int             # current page number
     limit: int            # how many per page
+    
+class UserCreate(BaseModel):
+    first_name: str
+    last_name: Optional[str] = None
+    username: str
+    password: str = Field(min_length=6)  # triggers 422 if too short
+
+class UserOut(BaseModel):
+    id: int
+    first_name: str
+    last_name: Optional[str] = None
+    username: str
+    model_config = ConfigDict(from_attributes=True)
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
