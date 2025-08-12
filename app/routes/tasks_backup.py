@@ -8,22 +8,32 @@ from sqlalchemy.exc import IntegrityError
 from ..database import get_db
 from .. import models, schemas
 
-
-
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
-'''# TEMP auth: read current user id from header until we add JWT
-def get_current_user_id(x_user_id: Optional[int] = Header(default=1, alias="X-User-Id")) -> int:
-    return x_user_id or 1'''
-    
-# Strict user dependency for debugging 500 Internal serve rerror
-def get_current_user_id(x_user_id: Optional[int] = Header(default=None, alias="X-User-Id")) -> int:
+# Strict user dependency (temporary header auth)
+def get_current_user_id(
+    x_user_id: Optional[int] = Header(
+        default=None,
+        alias="X-User-Id",
+        description="Temporary auth header; set this to an existing user ID (e.g., 1).",
+    )
+) -> int:
     if x_user_id is None:
         raise HTTPException(status_code=400, detail="Missing X-User-Id header")
     return x_user_id
 
+
 # 1) List all tasks (optional status filter + pagination)
-@router.get("/", response_model=schemas.PaginatedTasks)
+@router.get(
+    "/",
+    response_model=schemas.PaginatedTasks,
+    summary="List tasks",
+    description=(
+        "Return a paginated list of all tasks.\n\n"
+        "• **Filter**: `status` ∈ {\"New\", \"In Progress\", \"Completed\"}\n"
+        "• **Pagination**: `page` (≥1), `limit` (1..100)"
+    ),
+)
 def list_tasks(
     db: Session = Depends(get_db),
     status_filter: Optional[schemas.StatusLiteral] = Query(default=None, alias="status"),
@@ -45,7 +55,17 @@ def list_tasks(
 
 
 # 2) List only current user's tasks
-@router.get("/mine", response_model=schemas.PaginatedTasks)
+@router.get(
+    "/mine",
+    response_model=schemas.PaginatedTasks,
+    summary="List my tasks",
+    description=(
+        "Return a paginated list of tasks owned by the current user.\n\n"
+        "• Requires **X-User-Id** header\n"
+        "• **Filter**: `status` ∈ {\"New\", \"In Progress\", \"Completed\"}\n"
+        "• **Pagination**: `page` (≥1), `limit` (1..100)"
+    ),
+)
 def list_my_tasks(
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
@@ -68,7 +88,7 @@ def list_my_tasks(
 
 
 # 3) Get a specific task
-@router.get("/{task_id}", response_model=schemas.TaskOut)
+@router.get("/{task_id}", response_model=schemas.TaskOut, summary="Get a task by ID")
 def get_task(task_id: int, db: Session = Depends(get_db)):
     task = db.get(models.Task, task_id)
     if not task:
@@ -77,24 +97,13 @@ def get_task(task_id: int, db: Session = Depends(get_db)):
 
 
 # 4) Create a new task
-'''@router.post("/", response_model=schemas.TaskOut, status_code=status.HTTP_201_CREATED)
-def create_task(
-    payload: schemas.TaskCreate,
-    db: Session = Depends(get_db),
-    user_id: int = Depends(get_current_user_id),
-):
-    task = models.Task(
-        title=payload.title,
-        description=payload.description,
-        status=models.TaskStatus(payload.status),  # <<< cast string -> Enum
-        user_id=user_id,
-    )
-    db.add(task)
-    db.commit()
-    db.refresh(task)
-    return task'''
-# Debugging 500 Error: Internal Server Error
-@router.post("/", response_model=schemas.TaskOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/",
+    response_model=schemas.TaskOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a task",
+    description="Create a new task for the current user.",
+)
 def create_task(
     payload: schemas.TaskCreate,
     db: Session = Depends(get_db),
@@ -116,14 +125,23 @@ def create_task(
         # Typically: invalid enum value like "Done"
         raise HTTPException(status_code=400, detail=f"Invalid status: {e}")
 
-    except IntegrityError as e:
+    except IntegrityError:
         db.rollback()
         # Most common: foreign key fails because user_id doesn't exist
         raise HTTPException(status_code=400, detail="Integrity error (likely invalid user_id / FK). Make sure the user exists.")
 
 
-# 4b) Mark a task as completed (owner-only)
-@router.patch("/{task_id}/complete", response_model=schemas.TaskOut)
+# 4b) Mark a task as completed (owner-only, idempotent)
+@router.patch(
+    "/{task_id}/complete",
+    response_model=schemas.TaskOut,
+    summary="Mark task as completed",
+    description=(
+        "Set the task `status` to **Completed**. Owner-only and idempotent.\n\n"
+        "• **404** if task not found\n"
+        "• **403** if you are not the owner"
+    ),
+)
 def complete_task(
     task_id: int,
     db: Session = Depends(get_db),
@@ -135,7 +153,6 @@ def complete_task(
     if task.user_id != user_id:
         raise HTTPException(status_code=403, detail="You are not the owner of this task")
 
-    # Only update if not already completed (idempotent)
     if task.status != models.TaskStatus.COMPLETED:
         task.status = models.TaskStatus.COMPLETED
         db.commit()
@@ -158,20 +175,28 @@ def update_task(
     if task.user_id != user_id:
         raise HTTPException(status_code=403, detail="You are not the owner of this task")
 
-    data = payload.model_dump(exclude_unset=True)  # Pydantic v2
+    data = payload.model_dump(exclude_unset=True)
     if "status" in data and data["status"] is not None:
-        data["status"] = models.TaskStatus(data["status"])  # cast
+        try:
+            data["status"] = models.TaskStatus(data["status"])
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid status")
 
     for field, value in data.items():
         setattr(task, field, value)
 
     db.commit()
     db.refresh(task)
-    return task'''
+    return task
 
 
 # 6) Delete a task (owner-only)
-@router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{task_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a task (owner-only)",
+    description="Delete a task permanently if you are the owner.",
+)
 def delete_task(
     task_id: int,
     db: Session = Depends(get_db),
