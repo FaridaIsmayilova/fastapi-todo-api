@@ -35,6 +35,7 @@ class PaginatedTasks(BaseModel):
     total: int            # total number of tasks in DB
     page: int             # current page number
     limit: int            # how many per page
+    total_pages: int      # total number of pages = ceil(total / limit)
     
 class UserCreate(BaseModel):
     first_name: str
